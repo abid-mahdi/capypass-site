@@ -195,6 +195,11 @@
        where the inset is on the LEFT or RIGHT rather than the top. */
     --gutter-l: max(var(--section-pad-x), env(safe-area-inset-left, 0px));
     --gutter-r: max(var(--section-pad-x), env(safe-area-inset-right, 0px));
+    /* The TOP inset matters as much as the sides: once viewport-fit=cover is
+       set the fixed nav is free to slide under the status bar / notch unless
+       it pads for it. Adding the sides without the top is exactly the
+       obstruction WebKit's own iPhone X guidance warns about. */
+    --nav-pad-top: max(var(--space-3), env(safe-area-inset-top, 0px));
     --hero-pad-b:    clamp(3rem, 2rem + 4vw, 5rem);
     --gap-copy-media: clamp(1.5rem, 1.2rem + 1.2vw, 2rem);  /* block <-> its OWN phone */
     --gap-row:        clamp(3rem, 2rem + 5vw, 5.2rem);      /* block <-> the next block */
@@ -229,6 +234,10 @@ html {
     /* Without this, every anchor jump, in-page find, focus scroll and
        back-navigation restore lands the target under the fixed nav. */
     scroll-padding-top: calc(var(--nav-h) + var(--space-4));
+    /* Body's bottom padding stops the LAST element being permanently covered,
+       but only scroll-padding-bottom makes the browser treat the sticky bar as
+       a no-park zone when focus moves DOWN the page. C43 pairs both. */
+    scroll-padding-bottom: calc(var(--sticky-cta-h) + var(--space-4));
 }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
 body {
@@ -303,11 +312,18 @@ section, h1, h2, h3 { scroll-margin-top: calc(var(--nav-h) + var(--space-4)); }
    large headings. Undoing exactly that 0.5em and adding back the tile's own
    10px height lands the underline 0-10px under the glyphs at every step of the
    fluid type scale, and keeps it inside its own line box so a wrapped phrase's
-   underline does not sit on the next line. */
+   underline does not sit on the next line.
+
+   `box-decoration-break: clone` is required for the wrapped case, and its
+   default is NOT what you would assume: `slice` paints the background once
+   across the whole inline box and then cuts that single decoration between
+   fragments, so a phrase broken over two lines gets one sliced underline
+   rather than a correct one per line. `clone` repaints it per fragment. */
 .squiggle {
     background-repeat: repeat-x;
     background-position: 0 calc(100% - 0.5em + 10px);
     background-size: 34px 10px; padding-bottom: 0;
+    -webkit-box-decoration-break: clone; box-decoration-break: clone;
 }
 /* Keeps the wrap from stranding a single word, without forbidding it. */
 h1, h2, h3 { text-wrap: balance; }
@@ -344,7 +360,7 @@ h1, h2, h3 { text-wrap: balance; }
 /* ---------- Nav ---------- */
 nav {
     position: fixed; top: 0; left: 0; right: 0; z-index: 200;
-    padding: var(--space-3) var(--gutter-r) var(--space-3) var(--gutter-l);
+    padding: var(--nav-pad-top) var(--gutter-r) var(--space-3) var(--gutter-l);
     background: rgba(26, 26, 46, 0.85);
     backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
     border-bottom: 1px solid var(--app-card-border);
@@ -367,7 +383,7 @@ nav .links a.cta {
        reclaim the difference: header + bottom bar together are the page's
        permanent viewport cost and matter most on the shortest phones.
        The pill keeps a 44px minimum tap target while the bar itself shrinks. */
-    nav { padding-top: var(--space-2); padding-bottom: var(--space-2); }
+    nav { padding-top: max(var(--space-2), env(safe-area-inset-top, 0px)); padding-bottom: var(--space-2); }
     nav .links a.cta { display: inline-flex; align-items: center; min-height: 44px; }
 }
 /* Narrow foldable/cover screens: the CTA label wrapped to two lines, which
@@ -714,7 +730,10 @@ footer .foot-links a:hover { color: var(--text); }
    the redundant bar is the one to drop. Declared after the rule above so it
    wins on source order rather than !important; the script reads the computed
    display, so --sticky-cta-h and body's padding both collapse to 0. */
-@media (max-height: 480px) { .sticky-cta { display: none; } }
+/* 520px, not C34's example 480px: at 481px the bar would reappear and the
+   combined chrome would be 26.6% of the viewport, over this page's own 25%
+   budget. C34 states the threshold depends on the environment. */
+@media (max-height: 520px) { .sticky-cta { display: none; } }
 </style>
 </head>
 <body>
@@ -1259,6 +1278,21 @@ footer .foot-links a:hover { color: var(--text); }
             panel.style.maxHeight = open ? '' : panel.scrollHeight + 'px';
         });
     });
+
+    /* An open panel's max-height is a pixel value captured at the moment it was
+       opened. Anything that later changes how its text wraps - a rotation, a
+       window resize, the display webfont arriving - leaves that number stale and
+       silently clips the answer. Recompute the open ones whenever that happens. */
+    function refreshOpenFaqPanels() {
+        document.querySelectorAll('.faq-a.open').forEach(function (panel) {
+            panel.style.maxHeight = 'none';
+            var full = panel.scrollHeight;
+            panel.style.maxHeight = full + 'px';
+        });
+    }
+    window.addEventListener('resize', refreshOpenFaqPanels);
+    window.addEventListener('orientationchange', refreshOpenFaqPanels);
+    if (document.fonts && document.fonts.ready) { document.fonts.ready.then(refreshOpenFaqPanels); }
 })();
 </script>
 

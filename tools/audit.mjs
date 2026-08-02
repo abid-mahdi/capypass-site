@@ -55,6 +55,10 @@ const LIMITS = {
     reflowWidthPx: 320         // WCAG 2.2 SC 1.4.10 Reflow
 };
 
+/* A floor, not an exact count, so ordinary CSS additions don't trip it while a
+   syntax error that swallows a block still does. Raise it when rules are added. */
+const MIN_RULE_COUNT = 185;
+
 /* ------------------------------------------------------------------ *
  * Everything below runs INSIDE the page.
  * ------------------------------------------------------------------ */
@@ -287,15 +291,23 @@ function checkStylesheetIntegrity() {
             if (!decls.some((d) => d.getPropertyValue(p))) missing.push(`${sel} { ${p} }`);
         });
     }
-    // The decorative tile must never fall back to two-axis repeat.
-    const sq = document.querySelector('.squiggle');
-    const paint = sq ? getComputedStyle(sq) : null;
-    return {
-        ruleCount,
-        missing,
-        squiggleRepeat: paint ? paint.backgroundRepeat : null,
-        squiggleSize: paint ? paint.backgroundSize : null
-    };
+    // Every squiggle, not just the first, and exact values rather than
+    // "something is set" - `background-size: cover` or `34px 20px` would both
+    // have sailed through a looser check while looking wrong on screen.
+    const squiggles = [...document.querySelectorAll('.squiggle')];
+    const paintFaults = [];
+    squiggles.forEach((el) => {
+        const c = getComputedStyle(el);
+        const label = (el.textContent || '').trim().slice(0, 16);
+        if (c.backgroundRepeat !== 'repeat-x') paintFaults.push(`"${label}" background-repeat=${c.backgroundRepeat}`);
+        if (c.backgroundSize !== '34px 10px') paintFaults.push(`"${label}" background-size=${c.backgroundSize}`);
+        if (!/^0px calc/.test(c.backgroundPosition)) paintFaults.push(`"${label}" background-position=${c.backgroundPosition}`);
+        if (c.boxDecorationBreak !== 'clone' && c.webkitBoxDecorationBreak !== 'clone') {
+            paintFaults.push(`"${label}" box-decoration-break=${c.boxDecorationBreak} (a wrapped underline will be sliced, not repainted)`);
+        }
+        if (!/^url\(/.test(c.backgroundImage)) paintFaults.push(`"${label}" has no background-image`);
+    });
+    return { ruleCount, missing, squiggleCount: squiggles.length, paintFaults };
 }
 
 /** With reduced motion requested, nothing may still be animating. */
@@ -378,13 +390,32 @@ console.log(`scroll-target clearance under fixed nav : ${clearance.length ? 'FAI
 
 const css = await page.evaluate(checkStylesheetIntegrity);
 if (css.missing.length) fail('stylesheet', `rules/declarations lost to a parse error: ${css.missing.join(', ')}`);
-if (css.squiggleRepeat && css.squiggleRepeat !== 'repeat-x') {
-    fail('stylesheet', `.squiggle background-repeat is "${css.squiggleRepeat}", expected repeat-x (tile will paint over the text)`);
+if (css.paintFaults.length) fail('stylesheet', `squiggle paint wrong: ${css.paintFaults.join('; ')}`);
+if (css.ruleCount < MIN_RULE_COUNT) {
+    fail('stylesheet', `only ${css.ruleCount} rules parsed, expected >= ${MIN_RULE_COUNT} - a syntax error is eating rules`);
 }
-if (css.squiggleSize && css.squiggleSize === 'auto') {
-    fail('stylesheet', '.squiggle background-size is auto (tile paints at intrinsic size across the headline)');
+if (css.squiggleCount < 8) fail('stylesheet', `only ${css.squiggleCount} .squiggle elements found`);
+const cssOk = !css.missing.length && !css.paintFaults.length && css.ruleCount >= MIN_RULE_COUNT;
+console.log(`stylesheet intact (${css.ruleCount} rules, ${css.squiggleCount} squiggles) : ${cssOk ? 'ok' : 'FAIL'}`);
+
+/* The sticky bottom bar reappears the instant the viewport is tall enough.
+   Test right across that edge: a cutoff chosen without checking the boundary
+   is how the bar came back at 481px eating 26.6% of the screen. */
+const boundaries = [479, 480, 481, 500, 519, 520, 521, 560, 620];
+const budgetFaults = [];
+for (const h of boundaries) {
+    await page.setViewportSize({ width: 667, height: h });
+    await page.waitForTimeout(90);
+    const m = await page.evaluate(() => {
+        const nav = Math.round(document.querySelector('nav').getBoundingClientRect().height);
+        const el = document.getElementById('stickyCta');
+        const bar = getComputedStyle(el).display !== 'none' ? Math.round(el.getBoundingClientRect().height) : 0;
+        return { nav, bar, pct: +(((nav + bar) / window.innerHeight) * 100).toFixed(1) };
+    });
+    if (m.pct > LIMITS.maxStickyChromePct) budgetFaults.push(`${h}px -> ${m.pct}%`);
 }
-console.log(`stylesheet parsed intact (${css.ruleCount} rules)     : ${css.missing.length || css.squiggleRepeat !== 'repeat-x' ? 'FAIL' : 'ok'}`);
+if (budgetFaults.length) fail('sticky budget', `chrome over ${LIMITS.maxStickyChromePct}% at: ${budgetFaults.join(', ')}`);
+console.log(`sticky chrome budget across the cutoff  : ${budgetFaults.length ? 'FAIL' : 'ok'}`);
 
 const rm = await browser.newContext({ reducedMotion: 'reduce' });
 const rmPage = await rm.newPage();

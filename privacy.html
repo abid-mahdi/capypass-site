@@ -42,7 +42,11 @@
         h1, h2 { font-family: 'Baloo 2', 'Nunito', -apple-system, sans-serif; }
         nav {
             position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-            padding: .8rem 1.2rem; background: rgba(26, 26, 46, 0.85); /* appDarkBG @ 85% */
+            /* viewport-fit=cover lets this fixed bar reach the screen edge, so it
+               must pad for the notch/status area and the landscape side insets. */
+            padding: max(.8rem, env(safe-area-inset-top, 0px)) max(1.2rem, env(safe-area-inset-right, 0px))
+                     .8rem max(1.2rem, env(safe-area-inset-left, 0px));
+            background: rgba(26, 26, 46, 0.85); /* appDarkBG @ 85% */
             backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
             border-bottom: 1px solid var(--app-card-border);
             display: flex; justify-content: space-between; align-items: center;
@@ -50,7 +54,8 @@
         nav .brand { display: flex; align-items: center; gap: .5rem; font-weight: 800; font-size: 1.2rem; font-family: 'Baloo 2', 'Nunito', sans-serif; color: var(--text); }
         nav .brand svg { width: 30px; height: 30px; }
         nav .brand .accent { color: var(--app-gold); }
-        .wrap { max-width: 760px; margin: 0 auto; padding: 7rem 1.5rem 5rem; }
+        .wrap { max-width: 760px; margin: 0 auto;
+                padding: 7rem max(1.5rem, env(safe-area-inset-right, 0px)) 5rem max(1.5rem, env(safe-area-inset-left, 0px)); }
         h1 { font-size: 2.4rem; font-weight: 700; margin-bottom: .4rem; }
         .updated { color: var(--text-muted); margin-bottom: 2.5rem; }
         h2 { font-size: 1.35rem; font-weight: 700; margin: 2.4rem 0 .8rem; }
