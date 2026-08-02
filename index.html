@@ -289,13 +289,25 @@ section, h1, h2, h3 { scroll-margin-top: calc(var(--nav-h) + var(--space-4)); }
    whether the display webfont loaded. The background repeats along each line
    fragment, so a wrapped phrase still gets a correct underline per line.
 
-   Geometry is deliberately the original fixed 5px/100% pairing. `repeat-x` and
-   the explicit 34x10 background-size are LOAD-BEARING, not decoration: without
-   them the tile falls back to `repeat` at the SVG's intrinsic size and paints a
-   giant scribble across the word plus a second row beneath it. */
+   `repeat-x` and the explicit 34x10 background-size are LOAD-BEARING, not
+   decoration: without them the tile falls back to `repeat` at the SVG's
+   intrinsic size and paints a giant scribble across the word plus a second row
+   beneath it.
+
+   The vertical offset is measured, not guessed. A background at `100%` is
+   anchored to the padding box, whose bottom is the FONT's em-box bottom, and
+   Baloo 2 puts that a consistent 0.50em below the visible glyph bottom
+   (measured via canvas TextMetrics at 19.7/24/25.6/36.5/52.8px: 0.492, 0.526,
+   0.493, 0.505, 0.515). So `100%` alone parks the tile half an em adrift and the
+   gap GROWS with font size, which is why it read as a floating mark on the
+   large headings. Undoing exactly that 0.5em and adding back the tile's own
+   10px height lands the underline 0-10px under the glyphs at every step of the
+   fluid type scale, and keeps it inside its own line box so a wrapped phrase's
+   underline does not sit on the next line. */
 .squiggle {
-    background-repeat: repeat-x; background-position: 0 100%;
-    background-size: 34px 10px; padding-bottom: 5px;
+    background-repeat: repeat-x;
+    background-position: 0 calc(100% - 0.5em + 10px);
+    background-size: 34px 10px; padding-bottom: 0;
 }
 /* Keeps the wrap from stranding a single word, without forbidding it. */
 h1, h2, h3 { text-wrap: balance; }
